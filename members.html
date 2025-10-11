@@ -157,7 +157,9 @@ async function calcRecordHash(o){
     const blob = new Blob([vcTxt], {type:'application/json;charset=utf-8'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'member_vc_' + role + '_' + Date.now() + '.json';
+    a.download = 'member_vc_' + role + '_' + Date.now() + '.json'
+ref: 'member:' + subject
+
 
     a.click();
     URL.revokeObjectURL(a.href);
@@ -179,7 +181,7 @@ rec.record_hash = await calcRecordHash(rec);
 
 appendAudit(rec);
 alert('已產生並下載 VC；同步寫入一行鏈式審計日誌（可用「匯出」下載 audit_log.jsonl）');
-
+});
   // ========= 5) 匯出日誌 =========
   document.getElementById('btnExportLog').addEventListener('click', exportAudit);
   </script>
