@@ -158,8 +158,6 @@ async function calcRecordHash(o){
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'member_vc_' + role + '_' + Date.now() + '.json'
-ref: 'member:' + subject
-
 
     a.click();
     URL.revokeObjectURL(a.href);

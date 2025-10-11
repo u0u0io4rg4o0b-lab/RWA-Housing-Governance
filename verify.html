@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>審計日誌驗鍊器｜RWA Housing Governance MVP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Noto Sans,Helvetica,Arial;margin:24px;line-height:1.6}
+    .card{border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin:12px 0}
+    table{border-collapse:collapse;width:100%}
+    td,th{border:1px solid #e5e7eb;padding:6px}
+    .ok{color:#15803d}.bad{color:#b91c1c}
+  </style>
+</head>
+<body>
+  <h1>審計日誌驗鍊器</h1>
+  <div class="card">
+    <label>上傳 audit_log.jsonl</label>
+    <input id="logFile" type="file" accept=".jsonl,.txt" />
+    <button id="btnCheck">驗鍊</button>
+  </div>
+
+  <div class="card">
+    <table id="tbl"><thead>
+      <tr><th>#</th><th>action</th><th>ref</th><th>prev_hash 連結</th><th>record_hash 重算</th></tr>
+    </thead><tbody></tbody></table>
+    <p id="summary"></p>
+  </div>
+
+  <div id="nav"></div>
+  <script src="JS/nav.js"></script>
+  <script>
+  async function sha256HexStr(s){
+    const dig = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return Array.from(new Uint8Array(dig)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  async function calcRecordHash(o){
+    const keys = ['ts','actor','action','ref','data_hash','prev_hash'];
+    const flat = keys.map(k => (o[k]??'')).join('|');
+    return sha256HexStr(flat);
+  }
+  document.getElementById('btnCheck').addEventListener('click', async()=>{
+    const f = document.getElementById('logFile').files[0];
+    if(!f){ alert('請先選擇 audit_log.jsonl'); return; }
+    const text = await f.text();
+    const rows = text.trim().split('\n').filter(Boolean).map(JSON.parse);
+
+    const tbody = document.querySelector('#tbl tbody');
+    tbody.innerHTML = '';
+    let ok = true;
+    for(let i=0;i<rows.length;i++){
+      const r = rows[i];
+      const prevStr = i>0 ? JSON.stringify(rows[i-1]) : null;
+      const expectPrev = i>0 ? await sha256HexStr(prevStr) : null;
+      const okPrev = (r.prev_hash || null) === expectPrev;
+
+      const recHash = await calcRecordHash(r);
+      const okRec = r.record_hash === recHash;
+
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>'+(i+1)+'</td>'+
+        '<td>'+r.action+'</td>'+
+        '<td>'+r.ref+'</td>'+
+        '<td>'+(okPrev?'<span class="ok">OK</span>':'<span class="bad">BAD</span>')+'</td>'+
+        '<td>'+(okRec?'<span class="ok">OK</span>':'<span class="bad">BAD</span>')+'</td>';
+      tbody.appendChild(tr);
+      ok = ok && okPrev && okRec;
+    }
+    document.getElementById('summary').textContent = ok ? '整本驗鍊通過 ✅' : '驗鍊失敗 ❌';
+  });
+  </script>
+</body>
+</html>

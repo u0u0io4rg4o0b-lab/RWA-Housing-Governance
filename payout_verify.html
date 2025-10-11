@@ -1,7 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>撥款前核驗｜RWA Housing Governance MVP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Noto Sans,Helvetica,Arial;margin:24px;line-height:1.6}
+    .card{border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin:12px 0}
+    textarea{width:100%;min-height:100px;font-family:ui-monospace,Consolas,Menlo,monospace}
+    .ok{color:#15803d}.bad{color:#b91c1c}
+  </style>
+</head>
+<body>
+  <h1>撥款前核驗（用租約檔案對日誌）</h1>
 
+  <div class="card">
+    <div>
+      <label>上傳 audit_log.jsonl</label>
+      <input id="logFile" type="file" accept=".jsonl,.txt" />
+    </div>
+    <div style="margin-top:8px">
+      <label>上傳租約檔案（PDF/任何）</label>
+      <input id="leaseFile" type="file" />
+    </div>
+    <div style="margin-top:12px">
+      <button id="btnVerify">開始核驗</button>
+    </div>
+  </div>
 
+  <div class="card">
+    <p id="result"></p>
+    <textarea id="detail" readonly></textarea>
+  </div>
 
+  <div id="nav"></div>
+  <script src="JS/nav.js"></script>
+  <script>
+  async function sha256HexBuf(buf){
+    const dig = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(dig)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  document.getElementById('btnVerify').addEventListener('click', async()=>{
+    const log = document.getElementById('logFile').files[0];
+    const lease = document.getElementById('leaseFile').files[0];
+    if(!log || !lease){ alert('請先選兩個檔案'); return; }
 
+    const logText = await log.text();
+    const rows = logText.trim().split('\n').filter(Boolean).map(JSON.parse);
+    const buf = await lease.arrayBuffer();
+    const h = await sha256HexBuf(buf);
+    const ref = 'lease:' + lease.name;
 
-
-<div id="nav"></div> → <script src="JS/nav.js"></script>
+    const hit = rows.find(r => r.action==='LEASE_HASHED' && r.ref===ref && r.data_hash===h);
+    const ok = !!hit;
+    document.getElementById('result').textContent = ok ? '核驗通過 ✅' : '核驗失敗 ❌';
+    document.getElementById('detail').value =
+      'ref: ' + ref + '\nSHA-256: ' + h + '\n找到對應記錄: ' + (ok?'YES':'NO');
+  });
+  </script>
+</body>
+</html>
