@@ -20,7 +20,7 @@
     <div class="row">
       <div>
         <label>選擇租約檔案（PDF/任何檔）</label>
-        <input id="file" type="file" />
+<input id="file" type="file" accept=".pdf,.doc,.docx,.jpg,.png,.jpeg,.heic,.png,.webp" /> 
       </div>
       <div>
         <label>簽發者（issuer）</label>
@@ -30,6 +30,8 @@
     <div style="margin-top:12px">
       <button id="btnHash">① 計算雜湊並寫入日誌</button>
       <button id="btnExport">② 匯出日誌（audit_log.jsonl）</button>
+      <button id="btnReceipt" type="button">③ 匯出租約簽章回執</button>
+
     </div>
   </div>
 
@@ -41,7 +43,15 @@
   <div id="nav"></div>
   <script src="JS/nav.js"></script>
   <script>
-  const LOG_KEY = 'rwa:housing:audit_log';
+
+(function fixJsonlNewlines(){
+  const buf = localStorage.getItem('audit_log_jsonl') || '';
+  if (buf.includes('\\n{') || buf.includes('}\\n')) {
+    localStorage.setItem('audit_log_jsonl', buf.replace(/\\n/g, '\n'));
+  }
+})();
+
+  const LOG_KEY = 'audit_log_jsonl';
   const nowISO = ()=> new Date().toISOString();
 
   async function sha256HexBuf(buf){
@@ -49,10 +59,20 @@
     return Array.from(new Uint8Array(dig)).map(b=>b.toString(16).padStart(2,'0')).join('');
   }
   function readAuditLines(){
-    const buf = localStorage.getItem(LOG_KEY) || '';
-    if(!buf.trim()) return [];
-    return buf.trim().split('\n').map(s=>JSON.parse(s));
+  const buf = localStorage.getItem(LOG_KEY) || '';
+  if (!buf) return [];
+  const rows = buf.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  try {
+    return rows.map(s => JSON.parse(s));
+  } catch (e) {
+    // 進階保險：若中途有壞行，先標記並略過，避免整個功能掛掉
+    const good = [];
+    for (const s of rows) {
+      try { good.push(JSON.parse(s)); } catch(_) { /* 忽略壞行 */ }
+    }
+    return good;
   }
+}
   function appendAudit(o){
     let buf = localStorage.getItem(LOG_KEY) || '';
     buf += (buf && !buf.endsWith('\n')?'\n':'') + JSON.stringify(o) + '\n';
@@ -84,7 +104,11 @@
       record_hash: null
     };
     rec.record_hash = await calcRecordHash(rec);
-    appendAudit(rec);
+    const sig = `${rec.action}|${rec.ref}|${rec.data_hash}`;
+const seen = new Set(lines.map(x => `${x.action}|${x.ref}|${x.data_hash}`));
+if (!seen.has(sig)) {
+  appendAudit(rec);
+}
 
     document.getElementById('out').value =
       '檔名: ' + f.name + '\nSHA-256: ' + h + '\n已寫入日誌一行（LEASE_HASHED）';
@@ -95,10 +119,39 @@
     const blob = new Blob([buf], {type:'application/jsonl;charset=utf-8'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'audit_log.jsonl';
+    const ts = new Date().toISOString().replace(/[-:.TZ]/g,'').slice(0,14);
+const who = (document.getElementById('issuer')?.value || 'rwa').replace(/\W+/g,'-');
+a.download = `audit_log_${ts}_${who}.jsonl`;
+
     a.click();
     URL.revokeObjectURL(a.href);
   });
+function exportLeaseReceipt(){
+  const lines = readAuditLines();
+  if(!lines.length){ alert('目前還沒有任何審計記錄'); return; }
+  const rec = [...lines].reverse().find(x=>x.action==='LEASE_HASHED') || lines[lines.length-1];
+
+  const body = [
+    '【租約雜湊 簽章回執】',
+    `時間(ts):         ${rec.ts}`,
+    `簽發者(actor):    ${rec.actor}`,
+    `動作(action):     ${rec.action}`,
+    `指涉(ref):        ${rec.ref}`,
+    `資料雜湊(data):   ${rec.data_hash}`,
+    `前一手(prev_hash):${rec.prev_hash ?? '(null)'}`,
+    `本貼紙(record):   ${rec.record_hash}`,
+    '',
+    '說明：請搭配 verify.html 驗鏈（每一張貼紙要牽住上一張）。'
+  ].join('\n');
+
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([body], {type:'text/plain'}));
+  a.download = 'lease_receipt.txt';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+document.getElementById('btnReceipt').addEventListener('click', exportLeaseReceipt);
+
   </script>
 </body>
 </html>
